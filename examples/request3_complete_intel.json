@@ -1,0 +1,35 @@
+{
+  "sessionId": "demo-session-001",
+  "message": {
+    "sender": "scammer",
+    "text": "Call our support team at 9876543210 or +919123456789 immediately. Your account number 1234567890123 needs verification.",
+    "timestamp": "2026-02-02T10:03:00Z"
+  },
+  "conversationHistory": [
+    {
+      "sender": "scammer",
+      "text": "Hello, this is ICICI Bank customer care. Your account will be blocked within 1 hour due to KYC verification pending.",
+      "timestamp": "2026-02-02T10:00:00Z"
+    },
+    {
+      "sender": "user",
+      "text": "Why will my account be blocked?",
+      "timestamp": "2026-02-02T10:00:30Z"
+    },
+    {
+      "sender": "scammer",
+      "text": "Please send payment of Rs. 500 to verify your account at fraudster@paytm UPI ID. Also update your details at http://fake-icici-bank.com/verify",
+      "timestamp": "2026-02-02T10:01:30Z"
+    },
+    {
+      "sender": "user",
+      "text": "Which number should I contact?",
+      "timestamp": "2026-02-02T10:02:00Z"
+    }
+  ],
+  "metadata": {
+    "channel": "SMS",
+    "language": "English",
+    "locale": "IN"
+  }
+}
