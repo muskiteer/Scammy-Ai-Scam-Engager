@@ -3,12 +3,11 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"log"
 	"net/http"
 	"os"
 	"strings"
-	
+
 	"github.com/muskiteer/Ai-Scam/internal"
 )
 
@@ -22,7 +21,7 @@ type Request struct {
 type MessageResponse struct {
 	Sender    string `json:"sender"`
 	Text      string `json:"text"`
-	Timestamp string `json:"timestamp"`
+	Timestamp uint64 `json:"timestamp"`
 }
 
 type Metadata struct {
@@ -73,16 +72,18 @@ func StartConvo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	body, _ := io.ReadAll(r.Body)
-	log.Println("Received request body: ", string(body))
+	// body, _ := io.ReadAll(r.Body)
+	// log.Println("Received request body: ", string(body))
 
 	var request Request
 	err := json.NewDecoder(r.Body).Decode(&request)
+	log.Println("Received request: ", request)
+	log.Println("here 1 ")
 	if err != nil {
-		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		http.Error(w, "Invalid request payload: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-
+	log.Println("here 2 ")
 	// Validate required fields
 	if request.SessionID == "" || request.Message.Text == "" {
 		http.Error(w, "sessionId and message.text are required", http.StatusBadRequest)
@@ -123,14 +124,27 @@ func StartConvo(w http.ResponseWriter, r *http.Request) {
 		session.Context.CurrentState,
 		session.Context.Intel,
 		session.Context.TurnCount,
+		session.Context.AskCount,
 	)
+
+	// Increment ask count based on intent
+	switch intent {
+	case internal.IntentAskUPI:
+		session.Context.AskCount.UPI++
+	case internal.IntentAskPhone:
+		session.Context.AskCount.Phone++
+	case internal.IntentAskLink:
+		session.Context.AskCount.Link++
+	case internal.IntentAskBank:
+		session.Context.AskCount.Bank++
+	}
 
 	// Generate response
 	reply := internal.GetResponse(intent)
 	log.Println("reply: ", reply)
 
-	// Check if we should send final callback
-	if session.Context.CurrentState == internal.StateComplete {
+	// Check if we should send final callback (either completed or max turns reached)
+	if session.Context.CurrentState == internal.StateComplete || session.Context.TurnCount >= 15 {
 		go sendFinalCallback(session)
 
 		// Return completion response

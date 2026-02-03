@@ -40,6 +40,14 @@ var responses = map[Intent][]string{
 		"Please provide the contact number.",
 	},
 
+	IntentAskBank: {
+		"What is your bank account number?",
+		"Can you share the account details?",
+		"Please provide your account number.",
+		"Which account number should I verify?",
+		"I need the bank account number to proceed.",
+	},
+
 	IntentStall: {
 		"I am checking this now, please wait.",
 		"Give me a moment to look into this.",

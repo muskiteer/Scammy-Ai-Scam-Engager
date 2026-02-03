@@ -16,6 +16,7 @@ const (
 	IntentAskUPI         Intent = "ASK_UPI"
 	IntentAskLink        Intent = "ASK_LINK"
 	IntentAskPhone       Intent = "ASK_PHONE"
+	IntentAskBank        Intent = "ASK_BANK"
 	IntentStall          Intent = "STALL"
 	IntentNeutral        Intent = "NEUTRAL"
 )
@@ -27,14 +28,24 @@ type Intel struct {
 	Bank  []string
 }
 
+type AskCount struct {
+	UPI   int
+	Phone int
+	Link  int
+	Bank  int
+}
+
 type SessionContext struct {
 	ScamDetected bool
 	TurnCount    int
 	Intel        Intel
 	CurrentState State
+	AskCount     AskCount // Track how many times we've asked for each intel type
 }
 
 func GetState(ctx SessionContext) State {
+	const maxAskCount = 3
+
 	if !ctx.ScamDetected {
 		return StateInit
 	}
@@ -47,9 +58,33 @@ func GetState(ctx SessionContext) State {
 		return StateComplete
 	}
 
+	// Check if we have sufficient intelligence OR exhausted all attempts
+	intelCount := len(ctx.Intel.UPI) + len(ctx.Intel.Phone) +
+		len(ctx.Intel.Link) + len(ctx.Intel.Bank)
+
+	// End if we have at least 2 pieces of intel and exhausted attempts for missing ones
+	if intelCount >= 2 {
+		allMissingExhausted := true
+		if len(ctx.Intel.UPI) == 0 && ctx.AskCount.UPI < maxAskCount {
+			allMissingExhausted = false
+		}
+		if len(ctx.Intel.Phone) == 0 && ctx.AskCount.Phone < maxAskCount {
+			allMissingExhausted = false
+		}
+		if len(ctx.Intel.Link) == 0 && ctx.AskCount.Link < maxAskCount {
+			allMissingExhausted = false
+		}
+		if len(ctx.Intel.Bank) == 0 && ctx.AskCount.Bank < maxAskCount {
+			allMissingExhausted = false
+		}
+
+		if allMissingExhausted {
+			return StateComplete
+		}
+	}
+
 	// Check if we have partial intelligence - start extracting
-	hasPartialIntel := len(ctx.Intel.UPI) > 0 || len(ctx.Intel.Phone) > 0 ||
-		len(ctx.Intel.Link) > 0 || len(ctx.Intel.Bank) > 0
+	hasPartialIntel := intelCount > 0
 
 	if hasPartialIntel {
 		return StateIntelExtract
@@ -65,7 +100,15 @@ func GetState(ctx SessionContext) State {
 }
 
 // DeriveIntent determines the next intent based on current state and missing intelligence
-func DeriveIntent(state State, intel Intel, turnCount int) Intent {
+func DeriveIntent(state State, intel Intel, turnCount int, askCount AskCount) Intent {
+	const maxAskCount = 3
+	const maxTurnCount = 15
+
+	// End conversation if max turns reached
+	if turnCount >= maxTurnCount {
+		return IntentStall
+	}
+
 	switch state {
 	case StateInit:
 		return IntentNeutral
@@ -78,18 +121,18 @@ func DeriveIntent(state State, intel Intel, turnCount int) Intent {
 		return IntentStall
 
 	case StateIntelExtract:
-		// Prioritize intelligence gathering
-		if len(intel.UPI) == 0 {
+		// Prioritize intelligence gathering, but only if we haven't asked 3 times already
+		if len(intel.UPI) == 0 && askCount.UPI < maxAskCount {
 			return IntentAskUPI
 		}
-		if len(intel.Phone) == 0 {
+		if len(intel.Phone) == 0 && askCount.Phone < maxAskCount {
 			return IntentAskPhone
 		}
-		if len(intel.Link) == 0 {
+		if len(intel.Link) == 0 && askCount.Link < maxAskCount {
 			return IntentAskLink
 		}
-		if len(intel.Bank) == 0 {
-			return IntentConfirmDetails
+		if len(intel.Bank) == 0 && askCount.Bank < maxAskCount {
+			return IntentAskBank
 		}
 		return IntentStall
 

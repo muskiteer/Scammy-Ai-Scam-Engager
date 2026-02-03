@@ -7,7 +7,7 @@ import (
 
 var (
 	UPIRegex          = regexp.MustCompile(`\b[a-zA-Z0-9.\-_]{2,}@[a-zA-Z]{2,}\b`)
-	PhoneRegex        = regexp.MustCompile(`(\+91[\s-]?)?[6-9]\d{9}\b`)
+	PhoneRegex        = regexp.MustCompile(`(\+91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}\b`)
 	PhishingLinkRegex = regexp.MustCompile(`https?://[^\s]+`)
 	BankAccountRex    = regexp.MustCompile(`(?i)(?:account\s*(?:number|no\.?|#)?[:\s-]*)?\\b\d{10,18}\b`)
 )

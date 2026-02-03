@@ -1,11 +1,9 @@
 # AI Scam Engagement Backend
 
-> **GUVI Hackathon 2026 - Problem Statement 2**  
-> Agentic Honey-Pot for Scam Detection & Intelligence Extraction
+Agentic Honey-Pot for Scam Detection & Intelligence Extraction
 
 A deterministic, rule-based backend service in Go that acts as an agentic scam honeypot. The system engages with potential scammers, detects scam patterns using regex and scoring, and intelligently extracts critical information like UPI IDs, phone numbers, bank accounts, and phishing links.
 
-**📋 [GUVI Submission Guide](GUVI_SUBMISSION.md)** | **🚀 [Deployment Guide](DEPLOYMENT.md)**
 
 ## Features
 
@@ -295,6 +293,4 @@ go build -o scam-honeypot
 - Consider adding authentication for production deployments
 - Rate limiting recommended for public-facing deployments
 
-## License
-
-MIT License
+  
