@@ -9,7 +9,7 @@ var (
 	UPIRegex          = regexp.MustCompile(`\b[a-zA-Z0-9.\-_]{2,}@[a-zA-Z]{2,}\b`)
 	PhoneRegex        = regexp.MustCompile(`(\+91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}\b`)
 	PhishingLinkRegex = regexp.MustCompile(`https?://[^\s]+`)
-	BankAccountRex    = regexp.MustCompile(`(?i)(?:account\s*(?:number|no\.?|#)?[:\s-]*)?\\b\d{10,18}\b`)
+	BankAccountRex    = regexp.MustCompile(`(?i)(?:account\s*(?:number|no\.?|#)?[:\s-]*)?\b\d{10,18}\b`)
 )
 
 var trustedDomains = []string{"google.com", ".gov.in", "nic.in", "sbi.co.in", "icicibank.com", "hdfcbank.com", "axisbank.com"}
@@ -31,10 +31,15 @@ func ExtractIntel(input string, confidence int) Intel {
 	phoneMatches := PhoneRegex.FindAllString(input, -1)
 	phoneSet := make(map[string]bool)
 	for _, phone := range phoneMatches {
-		intel.Phone = append(intel.Phone, phone)
 		// Normalize phone to just digits for comparison
 		normalized := strings.ReplaceAll(strings.ReplaceAll(phone, "+91", ""), " ", "")
 		normalized = strings.ReplaceAll(normalized, "-", "")
+		// Store in +91XXXXXXXXXX format if 10 digits, otherwise keep as-is
+		if len(normalized) == 10 {
+			intel.Phone = append(intel.Phone, "+91"+normalized)
+		} else {
+			intel.Phone = append(intel.Phone, normalized)
+		}
 		phoneSet[normalized] = true
 		// Also add with +91 prefix digits
 		if strings.HasPrefix(phone, "+91") {
@@ -65,7 +70,8 @@ func ExtractIntel(input string, confidence int) Intel {
 		digits := extractDigits(bank)
 		// Skip if it's a phone number (exactly 10 digits) or less than 10 digits
 		if len(digits) >= 10 && len(digits) != 10 && !phoneSet[digits] {
-			intel.Bank = append(intel.Bank, bank)
+			// Store normalized digits only
+			intel.Bank = append(intel.Bank, digits)
 		}
 	}
 
@@ -83,13 +89,15 @@ func extractDigits(s string) string {
 	return result.String()
 }
 
-// MergeIntel combines two Intel structs, avoiding duplicates
+// MergeIntel combines two Intel structs, avoiding duplicates and limiting to 3 items per type
 func MergeIntel(existing Intel, new Intel) Intel {
+	const maxIntelPerType = 3
+
 	merged := Intel{
-		UPI:   deduplicate(append(existing.UPI, new.UPI...)),
-		Phone: deduplicate(append(existing.Phone, new.Phone...)),
-		Link:  deduplicate(append(existing.Link, new.Link...)),
-		Bank:  deduplicate(append(existing.Bank, new.Bank...)),
+		UPI:   limitItems(deduplicate(append(existing.UPI, new.UPI...)), maxIntelPerType),
+		Phone: limitItems(deduplicate(append(existing.Phone, new.Phone...)), maxIntelPerType),
+		Link:  limitItems(deduplicate(append(existing.Link, new.Link...)), maxIntelPerType),
+		Bank:  limitItems(deduplicate(append(existing.Bank, new.Bank...)), maxIntelPerType),
 	}
 	return merged
 }
@@ -107,4 +115,12 @@ func deduplicate(items []string) []string {
 	}
 
 	return result
+}
+
+// limitItems limits the slice to maxItems elements
+func limitItems(items []string, maxItems int) []string {
+	if len(items) > maxItems {
+		return items[:maxItems]
+	}
+	return items
 }

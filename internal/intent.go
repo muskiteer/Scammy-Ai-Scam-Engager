@@ -45,6 +45,12 @@ type SessionContext struct {
 
 func GetState(ctx SessionContext) State {
 	const maxAskCount = 3
+	const maxTurns = 15
+
+	// Force completion if we've reached max turns
+	if ctx.TurnCount >= maxTurns {
+		return StateComplete
+	}
 
 	if !ctx.ScamDetected {
 		return StateInit

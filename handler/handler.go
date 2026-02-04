@@ -19,9 +19,10 @@ type Request struct {
 }
 
 type MessageResponse struct {
-	Sender    string `json:"sender"`
-	Text      string `json:"text"`
-	Timestamp uint64 `json:"timestamp"`
+	Sender string `json:"sender"`
+	Text   string `json:"text"`
+	// Timestamp is optional and can be any format - we don't use it internally
+	Timestamp interface{} `json:"timestamp,omitempty"`
 }
 
 type Metadata struct {
@@ -78,12 +79,12 @@ func StartConvo(w http.ResponseWriter, r *http.Request) {
 	var request Request
 	err := json.NewDecoder(r.Body).Decode(&request)
 	log.Println("Received request: ", request)
-	log.Println("here 1 ")
+	// log.Println("here 1 ")
 	if err != nil {
 		http.Error(w, "Invalid request payload: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	log.Println("here 2 ")
+	// log.Println("here 2 ")
 	// Validate required fields
 	if request.SessionID == "" || request.Message.Text == "" {
 		http.Error(w, "sessionId and message.text are required", http.StatusBadRequest)
@@ -102,8 +103,8 @@ func StartConvo(w http.ResponseWriter, r *http.Request) {
 	indicators := internal.ScamIndicators{}
 	internal.ScamDetection(request.Message.Text, &indicators)
 
-	// Update scam detection status
-	if indicators.Score >= SCAM_THRESHOLD {
+	// Update scam detection status using combination logic
+	if internal.IsScam(&indicators) {
 		session.Context.ScamDetected = true
 	}
 
@@ -116,8 +117,15 @@ func StartConvo(w http.ResponseWriter, r *http.Request) {
 	newIntel := internal.ExtractIntel(request.Message.Text, indicators.Score)
 	session.Context.Intel = internal.MergeIntel(session.Context.Intel, newIntel)
 
+	// Log current intel status
+	log.Printf("Session %s - Turn %d - Intel: UPI=%d, Phone=%d, Link=%d, Bank=%d",
+		request.SessionID, session.Context.TurnCount,
+		len(session.Context.Intel.UPI), len(session.Context.Intel.Phone),
+		len(session.Context.Intel.Link), len(session.Context.Intel.Bank))
+
 	// Update state based on context
 	session.Context.CurrentState = internal.GetState(session.Context)
+	log.Printf("Session %s - Current State: %s", request.SessionID, session.Context.CurrentState)
 
 	// Derive intent for response
 	intent := internal.DeriveIntent(
@@ -139,15 +147,24 @@ func StartConvo(w http.ResponseWriter, r *http.Request) {
 		session.Context.AskCount.Bank++
 	}
 
-	// Generate response
 	reply := internal.GetResponse(intent)
 	log.Println("reply: ", reply)
 
-	// Check if we should send final callback (either completed or max turns reached)
+	// Check if conversation should end
 	if session.Context.CurrentState == internal.StateComplete || session.Context.TurnCount >= 15 {
+		// If we have all intel, give a conclusive response
+		hasAllIntel := len(session.Context.Intel.UPI) > 0 && len(session.Context.Intel.Phone) > 0 &&
+			len(session.Context.Intel.Link) > 0 && len(session.Context.Intel.Bank) > 0
+
+		if hasAllIntel {
+			reply = "Thank you for the information. I will verify everything and get back to you shortly."
+		}
+
+		log.Printf("Session %s - Ending conversation. State: %s, Turns: %d",
+			request.SessionID, session.Context.CurrentState, session.Context.TurnCount)
+
 		go sendFinalCallback(session)
 
-		// Return completion response
 		response := Response{
 			Status: "success",
 			Reply:  reply,
@@ -156,15 +173,12 @@ func StartConvo(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 
-		// Clean up session
 		store.Delete(request.SessionID)
 		return
 	}
 
-	// Save session
 	store.Update(session)
 
-	// Return normal response
 	response := Response{
 		Status: "success",
 		Reply:  reply,
@@ -182,14 +196,15 @@ func sendFinalCallback(session *internal.SessionData) {
 		log.Printf("Using default GUVI callback endpoint: %s", callbackURL)
 	}
 
-	// Build agent notes
 	notes := buildAgentNotes(session)
 
-	// Prepare final report matching GUVI format exactly
+	// Calculate total messages: scammer messages (TurnCount) + agent responses (TurnCount)
+	totalMessages := session.Context.TurnCount * 2
+
 	finalReport := FinalResponse{
 		SessionID:       session.SessionID,
 		ScamDetect:      session.Context.ScamDetected,
-		TotalMessagesEx: session.Context.TurnCount,
+		TotalMessagesEx: totalMessages,
 		ExtractIntel: ExtractedIntel{
 			BankAccounts:       session.Context.Intel.Bank,
 			UPIIds:             session.Context.Intel.UPI,
@@ -200,12 +215,12 @@ func sendFinalCallback(session *internal.SessionData) {
 		AgentNote: notes,
 	}
 
-	// Send callback
 	jsonData, err := json.Marshal(finalReport)
 	if err != nil {
 		log.Printf("Error marshaling final report: %v", err)
 		return
 	}
+	log.Println("+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+")
 	log.Println("Final report JSON: ", string(jsonData))
 
 	resp, err := http.Post(callbackURL, "application/json", bytes.NewBuffer(jsonData))
@@ -225,16 +240,22 @@ func sendFinalCallback(session *internal.SessionData) {
 func buildAgentNotes(session *internal.SessionData) string {
 	var notes []string
 
-	notes = append(notes, "Session completed after extracting sufficient intelligence.")
-
-	if len(session.Keywords) > 0 {
-		notes = append(notes, "Detected scam indicators: "+strings.Join(session.Keywords, ", "))
+	if session.Context.ScamDetected {
+		notes = append(notes, "Scam detected with high confidence.")
+	} else {
+		notes = append(notes, "No scam indicators detected.")
 	}
 
 	intelCount := len(session.Context.Intel.UPI) + len(session.Context.Intel.Phone) +
 		len(session.Context.Intel.Link) + len(session.Context.Intel.Bank)
 
-	notes = append(notes, "Total intelligence items extracted: "+string(rune(intelCount+'0')))
+	if intelCount > 0 {
+		notes = append(notes, "Successfully extracted intelligence through strategic engagement.")
+	}
+
+	if len(session.Keywords) > 0 {
+		notes = append(notes, "Scammer used tactics: "+strings.Join(session.Keywords, ", ")+".")
+	}
 
 	return strings.Join(notes, " ")
 }
