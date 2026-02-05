@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/muskiteer/Ai-Scam/routes"
@@ -28,12 +29,21 @@ func main() {
 	mux := http.NewServeMux()
 	routes.SetupRoutes(mux)
 
-	// Start server
-	addr := ":" + port
-	log.Printf("Starting server on %s", addr)
-	log.Printf("API Key configured: %v", os.Getenv("API_KEY") != "")
+	// Configure server with very long timeouts for Render free tier
+	// This prevents the server from killing long-running requests
+	server := &http.Server{
+		Addr:         ":" + port,
+		Handler:      mux,
+		ReadTimeout:  0,                 // No timeout - wait indefinitely for request
+		WriteTimeout: 0,                 // No timeout - wait indefinitely for response
+		IdleTimeout:  600 * time.Second, // 10 minutes idle before closing connection
+	}
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	log.Printf("Starting server on %s", server.Addr)
+	log.Printf("API Key configured: %v", os.Getenv("API_KEY") != "")
+	log.Printf("Timeouts: Read=NONE, Write=NONE (waits for request to complete)")
+
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }

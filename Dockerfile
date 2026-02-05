@@ -32,6 +32,9 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /app/app .
 
+# Copy .env file (optional - prefer environment variables in production)
+# COPY .env .env
+
 # Change ownership to non-root user
 RUN chown -R appuser:appuser /app
 
