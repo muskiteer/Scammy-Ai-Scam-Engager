@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/muskiteer/Ai-Scam/middleware"
 	"github.com/muskiteer/Ai-Scam/routes"
 )
 
@@ -28,12 +29,13 @@ func main() {
 	// Setup routes
 	mux := http.NewServeMux()
 	routes.SetupRoutes(mux)
+	muxWithLogging := middleware.Logging(mux)
 
 	// Configure server with very long timeouts for Render free tier
 	// This prevents the server from killing long-running requests
 	server := &http.Server{
 		Addr:         ":" + port,
-		Handler:      mux,
+		Handler:      muxWithLogging,
 		ReadTimeout:  0,                 // No timeout - wait indefinitely for request
 		WriteTimeout: 0,                 // No timeout - wait indefinitely for response
 		IdleTimeout:  600 * time.Second, // 10 minutes idle before closing connection
