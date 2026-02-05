@@ -55,11 +55,13 @@ type FinalResponse struct {
 const SCAM_THRESHOLD = 50
 
 func HealthCheck(w http.ResponseWriter, r *http.Request) {
+	log.Println("/health ->Health check endpoint hit")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
 }
 
 func StartConvo(w http.ResponseWriter, r *http.Request) {
+	log.Println("/api/engage ->StartConvo endpoint hit")
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
