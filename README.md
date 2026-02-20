@@ -28,7 +28,7 @@ A hybrid scam detection and engagement system that combines rule-based pattern m
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/muskiteer/Scammy-Ai-Scam-Engager
    cd Ai-Scam-Engagement
    ```
 
@@ -176,15 +176,23 @@ Incoming Message
 
 ```
 Ai-Scam-Engagement/
-├── src/
-│   ├── main.go              # Application entry point & HTTP server
-│   ├── handler/             # Scam detection & confidence scoring
-│   ├── internal/           # Response generation & strategy
-│   ├── middleware/           # Intelligence extraction (regex)
-│   └── session/              # Session management
-├── build/                    # Compiled binaries
-├── go.mod                    # Go module dependencies
-├── go.sum                    # Dependency checksums
+├── main.go                        # Application entry point & HTTP server
+├── handler/
+│   └── handler.go                 # Request handling, scam detection & confidence scoring
+├── internal/
+│   ├── Scam-Detection.go          # Scam keyword dictionaries & pattern matching
+│   ├── Extract.go                 # Regex-based intelligence extraction (UPI, phone, email, links)
+│   ├── intent.go                  # Intent derivation & strategic question selection
+│   ├── groq.go                    # Groq LLM API integration for response generation
+│   ├── responses.go               # Response templates & fallback replies
+│   ├── parsing.go                 # Message parsing & normalization
+│   └── session.go                 # In-memory session & conversation state management
+├── middleware/
+│   └── logging.go                 # Request logging & API key authentication middleware
+├── routes/
+│   └── routes.go                  # API route definitions & endpoint registration
+├── go.mod                         # Go module dependencies
+├── go.sum                         # Dependency checksums
 └── README.md
 ```
 
