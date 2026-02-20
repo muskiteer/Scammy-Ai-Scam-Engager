@@ -82,9 +82,9 @@ func GetState(ctx SessionContext) State {
 	return StateIntelExtract
 }
 
-// DeriveIntent determines the next intent based on current state and missing intelligence
+
 func DeriveIntent(state State, intel Intel, turnCount int, askCount AskCount) Intent {
-	const maxAskCount = 3
+	const maxAskCount = 1 // Only ask for each info type ONCE — we have very few turns
 	const maxTurnCount = 10
 
 	if turnCount >= maxTurnCount {
@@ -102,21 +102,14 @@ func DeriveIntent(state State, intel Intel, turnCount int, askCount AskCount) In
 		return IntentStall
 
 	case StateIntelExtract:
-		// Rotate between intel extraction and investigative questions
-		// Every 3rd turn ask identity questions for investigative scoring
-		if turnCount%3 == 0 && turnCount > 2 {
-			return IntentAskIdentity
-		}
-
-		// Prioritize the most common fake data types first
-		if len(intel.Phone) == 0 && askCount.Phone < maxAskCount {
-			return IntentAskPhone
-		}
+		// === PRIORITY 1: Core intel — UPI, Phone, Bank Account, Email, Phishing Link ===
+		// These are the most valuable pieces of scammer intelligence.
+		// Ask for each one ONCE, then move on immediately.
 		if len(intel.UPI) == 0 && askCount.UPI < maxAskCount {
 			return IntentAskUPI
 		}
-		if len(intel.Link) == 0 && askCount.Link < maxAskCount {
-			return IntentAskLink
+		if len(intel.Phone) == 0 && askCount.Phone < maxAskCount {
+			return IntentAskPhone
 		}
 		if len(intel.Bank) == 0 && askCount.Bank < maxAskCount {
 			return IntentAskBank
@@ -124,22 +117,22 @@ func DeriveIntent(state State, intel Intel, turnCount int, askCount AskCount) In
 		if len(intel.Email) == 0 && askCount.Email < maxAskCount {
 			return IntentAskEmail
 		}
+		if len(intel.Link) == 0 && askCount.Link < maxAskCount {
+			return IntentAskLink
+		}
+
+		// === PRIORITY 2: Secondary intel — only if turns remain ===
 		if len(intel.CaseIDs) == 0 && askCount.CaseID < maxAskCount {
 			return IntentAskCaseID
-		}
-		if len(intel.PolicyNumbers) == 0 && askCount.PolicyNumber < maxAskCount {
-			return IntentAskPolicyNumber
-		}
-		if len(intel.OrderNumbers) == 0 && askCount.OrderNumber < maxAskCount {
-			return IntentAskOrderNumber
-		}
-		if len(intel.CardNumbers) == 0 && askCount.CardNumber < maxAskCount {
-			return IntentAskCardNumber
 		}
 		if len(intel.IFSCCodes) == 0 && askCount.IFSCCode < maxAskCount {
 			return IntentAskIFSCCode
 		}
-		// All asked enough - rotate between engagement types
+		if len(intel.CardNumbers) == 0 && askCount.CardNumber < maxAskCount {
+			return IntentAskCardNumber
+		}
+
+		// === PRIORITY 3: Investigative / stalling — fill remaining turns ===
 		switch turnCount % 3 {
 		case 0:
 			return IntentAskIdentity
