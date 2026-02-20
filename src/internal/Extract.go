@@ -29,6 +29,15 @@ var (
 	// NEW: Email pattern for extraction
 	EmailRegex = regexp.MustCompile(`(?i)\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b`)
 
+	// NEW: Case/Reference ID patterns - expanded
+	CaseIDRegex = regexp.MustCompile(`(?i)(?:ref(?:erence)?|case|ticket|complaint|request|transaction|txn|id|number|no)[\s\.\-:#]*([A-Z]{2,6}[\-\s]?[0-9]{4,20}|[A-Z0-9]{6,20})`)
+
+	// NEW: Policy number patterns - expanded for various formats
+	PolicyNumberRegex = regexp.MustCompile(`(?i)(?:policy|pol|insurance|claim)[\s\.\-:#]*(?:no|number|num|#)?[\s\.\-:#]*([A-Z0-9]{6,20}|\d{8,16})`)
+
+	// NEW: Order number/ID patterns - expanded
+	OrderNumberRegex = regexp.MustCompile(`(?i)(?:order|ord|purchase|booking|reservation|shipment|tracking)[\s\.\-:#]*(?:no|number|num|id|#)?[\s\.\-:#]*([A-Z0-9]{6,25}|\d{8,16})`)
+
 	// NEW: Generic ID patterns (employee ID, reference ID, etc.)
 	ReferenceIDRegex = regexp.MustCompile(`(?i)(?:ref(?:erence)?|id|ticket|case|complaint)[\s\.\-:#]*([A-Z0-9]{6,20})`)
 )
@@ -54,10 +63,16 @@ var upiSuffixes = []string{
 // ExtractIntel extracts intelligence data from input text
 func ExtractIntel(input string, confidence int) Intel {
 	intel := Intel{
-		UPI:   []string{},
-		Phone: []string{},
-		Link:  []string{},
-		Bank:  []string{},
+		UPI:           []string{},
+		Phone:         []string{},
+		Link:          []string{},
+		Bank:          []string{},
+		Email:         []string{},
+		CaseIDs:       []string{},
+		PolicyNumbers: []string{},
+		OrderNumbers:  []string{},
+		CardNumbers:   []string{},
+		IFSCCodes:     []string{},
 	}
 
 	// Normalize input for better matching
@@ -95,10 +110,10 @@ func ExtractIntel(input string, confidence int) Intel {
 	for _, phone := range phoneMatches {
 		normalized := normalizePhone(phone)
 		if len(normalized) == 10 && !phoneSet[normalized] {
-			intel.Phone = append(intel.Phone, "+91"+normalized)
+			intel.Phone = append(intel.Phone, "+91-"+normalized)
 			phoneSet[normalized] = true
 		} else if len(normalized) == 12 && strings.HasPrefix(normalized, "91") && !phoneSet[normalized[2:]] {
-			intel.Phone = append(intel.Phone, "+"+normalized)
+			intel.Phone = append(intel.Phone, "+91-"+normalized[2:])
 			phoneSet[normalized[2:]] = true
 		}
 	}
@@ -116,7 +131,7 @@ func ExtractIntel(input string, confidence int) Intel {
 				phone := match[len(match)-1]
 				normalized := normalizePhone(phone)
 				if len(normalized) == 10 && !phoneSet[normalized] {
-					intel.Phone = append(intel.Phone, "+91"+normalized)
+					intel.Phone = append(intel.Phone, "+91-"+normalized)
 					phoneSet[normalized] = true
 				}
 			}
@@ -195,6 +210,68 @@ func ExtractIntel(input string, confidence int) Intel {
 		}
 	}
 
+	// ============ EXTRACT EMAIL ADDRESSES ============
+	emailMatches := EmailRegex.FindAllString(input, -1)
+	for _, email := range emailMatches {
+		emailLower := strings.ToLower(email)
+		// Only exclude UPI IDs - accept ALL emails (scammer emails can be from any domain)
+		if !isValidUPI(emailLower) && !containsString(intel.UPI, emailLower) && !containsString(intel.Email, emailLower) {
+			intel.Email = append(intel.Email, emailLower)
+		}
+	}
+
+	// ============ EXTRACT CASE/REFERENCE IDs ============
+	caseMatches := CaseIDRegex.FindAllStringSubmatch(input, -1)
+	for _, match := range caseMatches {
+		if len(match) >= 2 && match[1] != "" {
+			caseID := strings.TrimSpace(match[1])
+			if len(caseID) >= 6 && !containsString(intel.CaseIDs, caseID) {
+				intel.CaseIDs = append(intel.CaseIDs, caseID)
+			}
+		}
+	}
+
+	// ============ EXTRACT POLICY NUMBERS ============
+	policyMatches := PolicyNumberRegex.FindAllStringSubmatch(input, -1)
+	for _, match := range policyMatches {
+		if len(match) >= 2 && match[1] != "" {
+			policyNum := strings.TrimSpace(match[1])
+			if len(policyNum) >= 6 && !containsString(intel.PolicyNumbers, policyNum) && !phoneSet[policyNum] {
+				intel.PolicyNumbers = append(intel.PolicyNumbers, policyNum)
+			}
+		}
+	}
+
+	// ============ EXTRACT ORDER NUMBERS ============
+	orderMatches := OrderNumberRegex.FindAllStringSubmatch(input, -1)
+	for _, match := range orderMatches {
+		if len(match) >= 2 && match[1] != "" {
+			orderNum := strings.TrimSpace(match[1])
+			if len(orderNum) >= 6 && !containsString(intel.OrderNumbers, orderNum) && !phoneSet[orderNum] {
+				intel.OrderNumbers = append(intel.OrderNumbers, orderNum)
+			}
+		}
+	}
+
+	// ============ EXTRACT CARD NUMBERS ============
+	cardMatches := CardNumberRegex.FindAllString(input, -1)
+	for _, card := range cardMatches {
+		cardDigits := extractDigits(card)
+		// Card should be 16 digits and not overlap with phone
+		if len(cardDigits) == 16 && !phoneSet[cardDigits] && !containsString(intel.CardNumbers, cardDigits) {
+			intel.CardNumbers = append(intel.CardNumbers, cardDigits)
+		}
+	}
+
+	// ============ EXTRACT IFSC CODES ============
+	ifscMatches := IFSCRegex.FindAllString(input, -1)
+	for _, ifsc := range ifscMatches {
+		ifscUpper := strings.ToUpper(ifsc)
+		if !containsString(intel.IFSCCodes, ifscUpper) {
+			intel.IFSCCodes = append(intel.IFSCCodes, ifscUpper)
+		}
+	}
+
 	return intel
 }
 
@@ -214,10 +291,16 @@ func MergeIntel(existing Intel, new Intel) Intel {
 	const maxIntelPerType = 3
 
 	merged := Intel{
-		UPI:   limitItems(deduplicate(append(existing.UPI, new.UPI...)), maxIntelPerType),
-		Phone: limitItems(deduplicate(append(existing.Phone, new.Phone...)), maxIntelPerType),
-		Link:  limitItems(deduplicate(append(existing.Link, new.Link...)), maxIntelPerType),
-		Bank:  limitItems(deduplicate(append(existing.Bank, new.Bank...)), maxIntelPerType),
+		UPI:           limitItems(deduplicate(append(existing.UPI, new.UPI...)), maxIntelPerType),
+		Phone:         limitItems(deduplicate(append(existing.Phone, new.Phone...)), maxIntelPerType),
+		Link:          limitItems(deduplicate(append(existing.Link, new.Link...)), maxIntelPerType),
+		Bank:          limitItems(deduplicate(append(existing.Bank, new.Bank...)), maxIntelPerType),
+		Email:         limitItems(deduplicate(append(existing.Email, new.Email...)), maxIntelPerType),
+		CaseIDs:       limitItems(deduplicate(append(existing.CaseIDs, new.CaseIDs...)), maxIntelPerType),
+		PolicyNumbers: limitItems(deduplicate(append(existing.PolicyNumbers, new.PolicyNumbers...)), maxIntelPerType),
+		OrderNumbers:  limitItems(deduplicate(append(existing.OrderNumbers, new.OrderNumbers...)), maxIntelPerType),
+		CardNumbers:   limitItems(deduplicate(append(existing.CardNumbers, new.CardNumbers...)), maxIntelPerType),
+		IFSCCodes:     limitItems(deduplicate(append(existing.IFSCCodes, new.IFSCCodes...)), maxIntelPerType),
 	}
 	return merged
 }

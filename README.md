@@ -1,320 +1,225 @@
-# AI Scam Engagement Backend
+# 🍯 Honeypot API — AI Scam Engagement System
 
-Agentic Honey-Pot for Scam Detection & Intelligence Extraction
+## Description
+A hybrid scam detection and engagement system that combines rule-based pattern matching with adaptive conversation strategies. The system uses multi-turn confidence scoring to detect scams, extracts intelligence through strategic questioning, and generates human-like responses using **Groq LLM API** to maintain engagement with scammers — wasting their time and gathering critical evidence.
 
-A deterministic, rule-based backend service in Go that acts as an agentic scam honeypot. The system engages with potential scammers, detects scam patterns using regex and scoring, and intelligently extracts critical information like UPI IDs, phone numbers, bank accounts, and phishing links.
+---
 
-> **🎉 Recent Improvements (Feb 2026):** Enhanced output quality with accurate message counting, normalized intelligence data, actual scammer phrase extraction, and comprehensive innocent sender testing. See [IMPROVEMENTS.md](IMPROVEMENTS.md) for details.
+## 🧰 Tech Stack
+| Component | Technology |
+|-----------|------------|
+| **Language** | Go 1.x |
+| **AI / LLM Provider** | Groq API (LLaMA-based models for fast, natural response generation) |
+| **Pattern Matching** | Regular Expressions |
+| **Architecture** | RESTful API with in-memory session management |
+| **Deployment** | Render (Cloud Hosting) |
+| **Build** | Go Modules |
 
+---
 
-## Features
-
-- **Rule-Based Scam Detection**: No ML/LLM required - uses regex patterns and scoring for signals like urgency, account threats, payment requests, OTPs, and phishing links
-- **State Machine Architecture**: Manages conversation flow through INIT → ENGAGING → INTEL_EXTRACT → COMPLETE states
-- **Intelligence Extraction**: Automatically identifies and collects UPI IDs, bank accounts, phone numbers, phishing links, and suspicious keywords
-- **Intent-Driven Responses**: Derives conversational intent based on state and missing intelligence to keep scammers engaged
-- **Session Management**: Per-session state tracking with thread-safe in-memory storage
-- **Callback Webhooks**: Sends comprehensive final report when sufficient intelligence is gathered
-- **Human-Like Responses**: Uses predefined templates with random selection for natural conversation
-
-## Architecture
-
-### State Machine
-- **INIT**: Initial state, neutral engagement
-- **ENGAGING**: Scam detected (score ≥ 50), building rapport
-- **INTEL_EXTRACT**: Actively gathering missing intelligence
-- **COMPLETE**: Sufficient data collected, triggers final callback
-
-### Intent System
-- **CONFIRM_DETAILS**: Ask for clarification about the scam
-- **ASK_UPI**: Request UPI ID information
-- **ASK_PHONE**: Request phone number
-- **ASK_LINK**: Request verification links
-- **STALL**: Buy time while extracting information
-- **NEUTRAL**: Acknowledgment responses
-
-### Scam Detection Scoring
-- Urgency indicators: +20 points
-- Account threats: +30 points
-- Verification requests: +30 points
-- Payment requests: +30 points
-- OTP/password requests: +50 points
-- Impersonation: +20 points
-- **Threshold**: 50 points = scam detected
-
-## API Endpoints
-
-### POST /api/engage
-Main conversation endpoint. Receives messages and returns bot responses.
-
-**Request Body:**
-```json
-{
-  "sessionId": "unique-session-id",
-  "message": {
-    "sender": "user",
-    "text": "Your account will be blocked. Send OTP to verify.",
-    "timestamp": "2026-02-02T10:30:00Z"
-  },
-  "conversationHistory": [
-    {
-      "sender": "user",
-      "text": "Previous message",
-      "timestamp": "2026-02-02T10:29:00Z"
-    }
-  ],
-  "metadata": {
-    "channel": "whatsapp",
-    "language": "en",
-    "locale": "en-IN"
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "reply": "Why will my account be blocked?",
-  "state": "ENGAGING"
-}
-```
-
-When conversation is complete:
-```json
-{
-  "status": "complete",
-  "reply": "I am checking this now, please wait.",
-  "state": "COMPLETE"
-}
-```
-
-### GET /health
-Health check endpoint.
-
-**Response:** `200 OK` with body `"OK"`
-
-## Callback Webhook
-
-When a session reaches the COMPLETE state, a final report is automatically sent to the GUVI evaluation endpoint.
-
-**Callback Endpoint (Default):**
-```
-POST https://hackathon.guvi.in/api/updateHoneyPotFinalResult
-```
-
-**Callback Payload:**
-```json
-{
-  "sessionId": "unique-session-id",
-  "scamDetected": true,
-  "totalMessagesExchanged": 8,
-  "extractedIntelligence": {
-    "bankAccounts": ["1234567890123"],
-    "upiIds": ["scammer@paytm", "fraud@ybl"],
-    "phishingLinks": ["http://fake-bank-verify.com/login"],
-    "phoneNumbers": ["9876543210", "+919123456789"],
-    "suspiciousKeywords": ["Urgent Request", "Account Threat", "OTP Request"]
-  },
-  "agentNotes": "Session completed after extracting sufficient intelligence. Detected scam indicators: Urgent Request, Account Threat, OTP Request. Total intelligence items extracted: 5"
-}
-```
-
-> **Note**: The callback URL defaults to the GUVI endpoint. You can override it by setting `CALLBACK_URL` in your `.env` file for testing purposes.
-
-## Installation & Setup
+## ⚙️ Setup Instructions
 
 ### Prerequisites
-- Go 1.22 or higher
+- Go 1.21 or higher installed
+- A valid [Groq API](https://console.groq.com/) key
 - Git
 
-### Clone and Install
-```bash
-git clone <repository-url>
-cd Ai-Scam-Engagement
-go mod download
-```
+### Installation
 
-### Configuration
-Create a `.env` file (optional):
-```bash
-cp .env.example .env
-```
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd Ai-Scam-Engagement
+   ```
 
-Edit `.env` to configure:
-```env
-# API Key for authentication (REQUIRED for production)
-API_KEY=your-secret-api-key-here
+2. **Install dependencies**
+   ```bash
+   go mod download
+   ```
 
-# Callback URL (defaults to GUVI endpoint if not set)
-CALLBACK_URL=https://hackathon.guvi.in/api/updateHoneyPotFinalResult
+3. **Set environment variables**
+   ```bash
+   export API_KEY="your-api-key"
+   export CALLBACK_URL="https://your-callback-url.com"
+   export GROQ_API_KEY="your-groq-api-key"
+   ```
 
-# Server port (optional, defaults to 8080)
-PORT=8080
-```
+4. **Run the application**
+   ```bash
+   go run src/main.go
+   # Or build and run
+   go build -o build/scam-detector src/main.go
+   ./build/scam-detector
+   ```
 
-### Run the Server
-```bash
-go run main.go
-```
+5. **Verify the server is running**
+   ```bash
+   curl http://localhost:8080/health
+   ```
 
-Server starts on `http://localhost:8080`
+---
 
-## Usage Examples
+## 🌐 API Endpoint
 
-### Example 1: Scam Detection and Engagement
-```bash
-curl -X POST http://localhost:8080/api/engage \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "test-session-1",
-    "message": {
-      "sender": "user",
-      "text": "URGENT! Your SBI account will be blocked in 1 hour. Verify at http://fake-sbi.com",
-      "timestamp": "2026-02-02T10:00:00Z"
-    },
-    "conversationHistory": [],
-    "metadata": {
-      "channel": "whatsapp",
-      "language": "en",
-      "locale": "en-IN"
-    }
-  }'
-```
+| Field | Value |
+|-------|-------|
+| **Base URL** | `https://scammy-ai-scam-engager.onrender.com` |
+| **Engage Endpoint** | `POST /api/engage` |
+| **Health Check** | `GET /health` |
+| **Authentication** | `Sc_ODjFW5MFFFOW547mIUPolg1Qrc-BD8Ys` |
 
-**Response:**
+### Sample Request
 ```json
 {
-  "status": "success",
-  "reply": "What exactly is the problem with my account?",
+  "message": "Dear customer, your bank account has been suspended. Send your OTP to reactivate.",
+  "session_id": "abc-123"
 }
 ```
 
-### Example 2: Intelligence Extraction
-```bash
-curl -X POST http://localhost:8080/api/engage \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "test-session-1",
-    "message": {
-      "sender": "user",
-      "text": "Send payment to scammer@paytm or call 9876543210 immediately",
-      "timestamp": "2026-02-02T10:02:00Z"
-    },
-    "conversationHistory": [],
-    "metadata": {
-      "channel": "whatsapp",
-      "language": "en",
-      "locale": "en-IN"
-    }
-  }'
-```
-
-**Response:**
+### Sample Response
 ```json
 {
-  "status": "success",
-  "reply": "Can you send the link here?",
+  "response": "Oh no, that sounds serious! Which bank is this regarding? I have accounts with multiple banks.",
+  "session_id": "abc-123",
+  "scam_detected": true,
+  "confidence": 0.75
 }
 ```
 
-## API Authentication
+---
 
-All requests to `/api/engage` must include authentication via the `x-api-key` header:
+## 🧠 Approach
 
-```bash
-curl -X POST http://localhost:8080/api/engage \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: your-secret-api-key" \
-  -d '...'
+### 1. Scam Detection
+- **Rule-based analysis** identifies urgency keywords, threats, financial requests, and impersonation attempts using curated regex patterns and keyword dictionaries
+- **Confidence scoring** accumulates across multiple message turns — each detected scam indicator (e.g., *"act now"*, *"send money"*, *"your account will be blocked"*) adds weighted points to an overall scam confidence score
+- **Threshold activation** triggers engagement mode once confidence exceeds **60%**, transitioning from passive detection to active scam engagement
+- **Groq-powered contextual analysis** supplements rule-based detection by leveraging the **Groq LLM API** to understand nuanced scam tactics, interpret ambiguous messages, and validate scam intent when rule-based confidence is borderline — ensuring fewer false positives and smarter escalation decisions
+- **Multi-category classification** detects various scam types including bank fraud, UPI fraud, phishing, lottery scams, tech support scams, and impersonation attempts
+- **Conversation history awareness** analyzes the full conversation context (not just individual messages) to catch scammers who gradually escalate their tactics over multiple turns
+
+### 2. Intelligence Extraction
+- **Regex patterns** extract phone numbers, UPI IDs, bank accounts, email addresses, and phishing links from scammer messages
+- **Intent-based questioning** strategically asks for missing information types — if a phone number is already captured, the system pivots to ask for a bank name or UPI ID
+- **Session tracking** maintains full context across conversation turns, building a complete intelligence profile of the scammer
+- **Data normalization** cleans and standardizes extracted data (e.g., phone number formats, URL deobfuscation)
+
+### 3. Response Generation
+- **Intent mapping** determines what type of question or response is needed based on the current conversation state and missing intelligence
+- **Groq API integration** generates natural, human-like responses based on intent and conversation tone — the system prompts the Groq LLM with carefully crafted instructions to sound like a genuine, slightly naive victim
+- **Adaptive strategy** balances information gathering with maintaining engagement (optimal engagement window: **8–15 turns**)
+- **Tone matching** adjusts response style based on scam type — fearful for threat-based scams, excited for lottery scams, confused for tech support scams
+- **Anti-detection measures** introduces natural delays, typos, and conversational fillers to avoid detection by sophisticated scammers
+
+### 4. Engagement Metrics
+- Tracks conversation duration, turn count, questions asked, and red flags identified
+- Calculates scam type (`bank_fraud`, `upi_fraud`, `phishing`) and confidence level
+- Submits final intelligence report with extracted data and engagement metrics
+- Measures **time wasted** — the primary success metric for keeping scammers occupied
+
+---
+
+## 🔄 System Flow
+
+```
+Incoming Message
+       │
+       ▼
+┌──────────────┐
+│ Rule-Based   │──── Keywords, regex, threat patterns, Groq API
+│ Analysis     │
+└──────┬───────┘
+       │
+       ▼
+┌──────────────┐
+│ Confidence   │──── Accumulates score across turns
+│ Scoring      │
+└──────┬───────┘
+       │
+       ▼
+   Score > 60%? ─── No ──▶ Generic safe response
+       │
+      Yes
+       │
+       ▼
+┌──────────────┐
+│ Intelligence │──── Extract phone, UPI, email, links
+│ Extraction   │
+└──────┬───────┘
+       │
+       ▼
+┌──────────────┐
+│ Groq LLM     │──── Generate human-like engagement reply
+│ Response Gen  │
+└──────┬───────┘
+       │
+       ▼
+   Response sent back to scammer
 ```
 
-Set your API key in the `.env` file. If no API key is configured, authentication is bypassed (not recommended for production).
+---
 
-## HTTPS Deployment
+## 📊 Scam Categories Detected
 
-For GUVI Hackathon submission, your endpoint must use HTTPS. See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions on:
+| Category | Indicators |
+|----------|------------|
+| **Bank Fraud** | Account suspension, OTP requests, KYC updates |
+| **UPI Fraud** | Payment requests, QR codes, refund scams |
+| **Phishing** | Suspicious links, login page mimics, credential harvesting |
+| **Lottery/Prize** | Congratulations messages, prize claims, advance fee requests |
+| **Tech Support** | Virus warnings, remote access requests, software installation |
+| **Impersonation** | Government official claims, bank representative claims |
 
-- Deploying to cloud platforms (Railway, Render, Fly.io)
-- Setting up reverse proxy with Nginx/Caddy
-- Configuring SSL certificates
-- Docker containerization
-- Production best practices
+---
 
-## Project Structure
+## 🗂️ Project Structure
 
 ```
-.
-├── main.go                    # Entry point
-├── go.mod                     # Go module definition
-├── handler/
-│   └── handler.go            # HTTP handlers and business logic
-├── internal/
-│   ├── Scam-Detection.go     # Rule-based scam detection with scoring
-│   ├── Extract.go            # Intelligence extraction (UPI, phone, links, etc.)
-│   ├── intent.go             # State machine and intent derivation
-│   ├── responses.go          # Response templates and generation
-│   ├── session.go            # Session state management
-│   └── parsing.go            # Input parsing utilities
-└── routes/
-    └── routes.go             # Route definitions
+Ai-Scam-Engagement/
+├── src/
+│   ├── main.go              # Application entry point & HTTP server
+│   ├── handler/             # Scam detection & confidence scoring
+│   ├── internal/           # Response generation & strategy
+│   ├── middleware/           # Intelligence extraction (regex)
+│   └── session/              # Session management
+├── build/                    # Compiled binaries
+├── go.mod                    # Go module dependencies
+├── go.sum                    # Dependency checksums
+└── README.md
 ```
 
-## Scam Detection Patterns
+---
 
-The system uses regex patterns to detect:
+## 🚀 Why Groq?
 
-- **UPI IDs**: `username@bank` format (e.g., `scammer@paytm`)
-- **Phone Numbers**: Indian format with optional +91 prefix (e.g., `9876543210`)
-- **Phishing Links**: HTTP/HTTPS URLs excluding trusted domains
-- **Bank Accounts**: Account numbers with 10-18 digits
-- **Urgency Keywords**: "urgent", "immediately", "right now", "final warning"
-- **Account Threats**: "blocked", "suspended", "disabled", "frozen"
-- **Verification Requests**: "verify", "KYC", "reactivate"
-- **OTP Requests**: "OTP", "PIN", "CVV", "password"
-- **Impersonation**: Bank names, "customer care", "support team"
+The system uses [Groq](https://groq.com/) as its LLM provider for response generation because:
 
-## Development
+- **Ultra-low latency** — Groq's LPU (Language Processing Unit) delivers responses in milliseconds, critical for real-time scam engagement where delays feel unnatural
+- **Cost-effective** — Generous free tier and affordable pricing for high-volume scam interception
+- **High-quality output** — Runs LLaMA and Mixtral models that produce convincing, context-aware responses
+- **Simple API** — OpenAI-compatible API format makes integration straightforward
 
-### Running Tests
+---
 
-#### Test Scam Detection (Full Intelligence Extraction):
-```bash
-export API_KEY="YOUR_SECRET_API_KEY"
-./test_complete_intel.sh
-```
+## 📈 Key Metrics Tracked
 
-#### Test Innocent Sender (False Positive Check):
-```bash
-export API_KEY="YOUR_SECRET_API_KEY"
-./test_innocent_sender.sh
-```
+| Metric | Description |
+|--------|-------------|
+| `turn_count` | Number of messages exchanged |
+| `confidence` | Scam detection confidence (0.0 – 1.0) |
+| `scam_type` | Classified scam category |
+| `extracted_data` | Phone numbers, UPI IDs, emails, links found |
+| `questions_asked` | Strategic questions posed to the scammer |
+| `red_flags` | Specific scam indicators triggered |
+| `engagement_duration` | Total time the scammer was kept engaged |
 
-#### Run Unit Tests:
-```bash
-go test ./...
-```
+---
 
-See [QUICK_REFERENCE.md](QUICK_REFERENCE.md) for more testing details.
+## 🛡️ Disclaimer
 
-### Building for Production
-```bash
-go build -o scam-honeypot
-./scam-honeypot
-```
+This project is built for **defensive cybersecurity purposes only**. It is designed to:
+- Waste scammers' time, reducing their ability to target real victims
+- Gather intelligence on scam operations for reporting to authorities
+- Study scam tactics and improve detection systems
 
-## Documentation
-
-- **[IMPROVEMENTS.md](IMPROVEMENTS.md)** - Recent quality improvements and refinements
-- **[BEFORE_AFTER_COMPARISON.md](BEFORE_AFTER_COMPARISON.md)** - Output examples showing improvements
-- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Quick start guide and testing checklist
-
-## Security Considerations
-
-- Sessions are stored in-memory and cleared after completion
-- No persistent storage of sensitive data by default
-- Configure CALLBACK_URL to send data to your secure backend
-- Consider adding authentication for production deployments
-- Rate limiting recommended for public-facing deployments
-
-  
+This tool should **not** be used for harassment, entrapment, or any illegal activity.

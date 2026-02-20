@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/muskiteer/Ai-Scam/middleware"
-	"github.com/muskiteer/Ai-Scam/routes"
+	"github.com/muskiteer/Ai-Scam/src/middleware"
+	"github.com/muskiteer/Ai-Scam/src/routes"
 )
 
 func main() {

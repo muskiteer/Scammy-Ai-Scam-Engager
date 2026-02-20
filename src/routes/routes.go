@@ -2,7 +2,7 @@ package routes
 
 import (
 	"net/http"
-	"github.com/muskiteer/Ai-Scam/handler"
+	"github.com/muskiteer/Ai-Scam/src/handler"
 )
 
 func SetupRoutes(mux *http.ServeMux) {

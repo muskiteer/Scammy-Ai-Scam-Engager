@@ -12,6 +12,7 @@ type SessionData struct {
 	MessageHistory []string
 	Keywords       []string // Suspicious keywords from ScamDetection
 	LastUpdated    time.Time
+	StartTime      time.Time // Track when conversation started for engagement duration
 }
 
 // SessionStore manages all active sessions
@@ -45,16 +46,27 @@ func (s *SessionStore) Get(sessionID string) *SessionData {
 			ScamDetected: false,
 			TurnCount:    0,
 			Intel: Intel{
-				UPI:   []string{},
-				Phone: []string{},
-				Link:  []string{},
-				Bank:  []string{},
+				UPI:           []string{},
+				Phone:         []string{},
+				Link:          []string{},
+				Bank:          []string{},
+				Email:         []string{},
+				CaseIDs:       []string{},
+				PolicyNumbers: []string{},
+				OrderNumbers:  []string{},
+				CardNumbers:   []string{},
+				IFSCCodes:     []string{},
 			},
-			CurrentState: StateInit,
+			CurrentState:            StateInit,
+			QuestionsAsked:          0,
+			InvestigativeQuestions:  0,
+			RedFlagsIdentified:      []string{},
+			InformationElicitations: 0,
 		},
 		MessageHistory: []string{},
 		Keywords:       []string{},
 		LastUpdated:    time.Now(),
+		StartTime:      time.Now(),
 	}
 
 	s.sessions[sessionID] = newSession
