@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/muskiteer/Ai-Scam/src/internal"
+	"github.com/muskiteer/Ai-Scam/internal"
 )
 
 type Request struct {
