@@ -19,6 +19,11 @@ var responses = map[Intent][]string{
 		"I am not very good with technology. Can you please explain step by step what I need to do?",
 		"My son told me to be careful about these things. Can you tell me more about what went wrong?",
 		"I have never faced this issue before. What exactly do I need to do to fix this problem?",
+		"I am quite confused by all this. Can you please tell me again from the beginning how this problem started?",
+		"This has never happened to me before and I am very worried. Can you confirm which bank branch you are calling from?",
+		"I want to understand the full situation. Can you explain what exactly will happen to my account if I do not act now?",
+		"I need to write all this down so I remember correctly. Can you slowly repeat all the details again please?",
+		"Before I do anything, I need to understand — who else in your department knows about this issue with my account?",
 	},
 
 	IntentAskUPI: {
@@ -110,6 +115,11 @@ var responses = map[Intent][]string{
 		"Can you provide your badge number or registration details? I want to feel safe before sharing anything.",
 		"Which organization exactly do you represent? I want to call their main number directly to verify your identity.",
 		"How can I be sure you are who you say you are? Can you share any official reference I can verify?",
+		"My friend had a similar experience that turned out to be a fraud. Can you prove your identity beyond just your name?",
+		"I need to cross-check your details with my bank. What is the exact name of the department that is calling me?",
+		"Please give me your direct line and employee code so I can call back through the official bank number.",
+		"Can you spell out your full name and tell me which city your office is in? I want to verify this independently.",
+		"I have read about many phone frauds in the news lately. What makes your call legitimate and how do I verify it?",
 	},
 
 	IntentStall: {
@@ -133,6 +143,23 @@ var responses = map[Intent][]string{
 		"Alright, please continue and tell me more.",
 		"Got it, please go ahead with the details.",
 		"Understood, I am listening carefully.",
+	},
+
+	IntentDeepProbe: {
+		"I want to be absolutely sure this is legitimate. Can you give me your supervisor's full name and their direct contact number so I can verify?",
+		"My son told me to always double-check these calls. What is the official government registration number or license of your organization?",
+		"Before I proceed with anything, I need to verify your credentials. What official ID number or badge number does your department operate under?",
+		"I want to raise this with your head office directly. Can you share the complete postal address of your office so I can write to you?",
+		"I would feel safer visiting your branch in person. What is your nearest branch location and what are the office hours I should come?",
+		"Can you share the official website address of your organization so I can independently verify who you are and what department you belong to?",
+		"I am very careful about my personal security. How exactly did your organization obtain my personal contact details and account information?",
+		"I need to record all details for my own safety. What is your employee badge number and the full name of your direct reporting manager?",
+		"My bank always told me to verify callers through the official helpline. Can you tell me the exact steps to verify your identity through your organization's main number?",
+		"I want to file a formal complaint if this is not resolved. What is the grievance officer's full name and official email address at your organization?",
+		"Can you explain in detail what will happen to me if I do not comply with your request? I want to clearly understand every option available to me.",
+		"I have received fraudulent calls pretending to be from banks before. How is this call genuinely different and what proof can you offer right now?",
+		"What is the full legal registered name of the company or institution you represent? I would like to search for it on the government portal before proceeding.",
+		"Can you first send me an official written notice on your company letterhead by email? I do not take any financial action without official written documentation.",
 	},
 }
 

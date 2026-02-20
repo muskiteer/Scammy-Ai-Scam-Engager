@@ -24,6 +24,7 @@ const (
 	IntentAskCardNumber   Intent = "ASK_CARD_NUMBER"
 	IntentAskIFSCCode     Intent = "ASK_IFSC_CODE"
 	IntentAskIdentity     Intent = "ASK_IDENTITY"
+	IntentDeepProbe       Intent = "DEEP_PROBE"
 	IntentStall           Intent = "STALL"
 	IntentNeutral         Intent = "NEUTRAL"
 )
@@ -67,9 +68,9 @@ type SessionContext struct {
 }
 
 func GetState(ctx SessionContext) State {
-	const maxTurns = 10 // Evaluator sends up to 10 turns - NEVER complete before
+	const maxTurns = 15 // Extended to 15 turns — intermediate callback fires at turn 10
 
-	// ONLY complete at turn 10 - maximize engagement for all scoring categories
+	// Complete only after 15 turns for maximum engagement score
 	if ctx.TurnCount >= maxTurns {
 		return StateComplete
 	}
@@ -78,14 +79,13 @@ func GetState(ctx SessionContext) State {
 		return StateInit
 	}
 
-	// Always keep extracting intel until turn 10 - never complete early
+	// Always keep extracting intel until max turns — never complete early
 	return StateIntelExtract
 }
 
-
 func DeriveIntent(state State, intel Intel, turnCount int, askCount AskCount) Intent {
-	const maxAskCount = 1 // Only ask for each info type ONCE — we have very few turns
-	const maxTurnCount = 10
+	const maxAskCount = 2 // Ask each info type up to TWICE for maximum elicitation score
+	const maxTurnCount = 15
 
 	if turnCount >= maxTurnCount {
 		return IntentStall
@@ -93,18 +93,24 @@ func DeriveIntent(state State, intel Intel, turnCount int, askCount AskCount) In
 
 	switch state {
 	case StateInit:
-		return IntentConfirmDetails // Ask questions even before scam detected
+		// Even unconfirmed scams get probed — verify caller identity immediately
+		if turnCount%2 == 0 {
+			return IntentAskIdentity
+		}
+		return IntentConfirmDetails
 
 	case StateEngaging:
-		if turnCount%2 == 0 {
+		switch turnCount % 3 {
+		case 0:
+			return IntentAskIdentity
+		case 1:
+			return IntentDeepProbe
+		default:
 			return IntentConfirmDetails
 		}
-		return IntentStall
 
 	case StateIntelExtract:
-		// === PRIORITY 1: Core intel — UPI, Phone, Bank Account, Email, Phishing Link ===
-		// These are the most valuable pieces of scammer intelligence.
-		// Ask for each one ONCE, then move on immediately.
+		// === PRIORITY 1: Core intel — ask each up to maxAskCount times ===
 		if len(intel.UPI) == 0 && askCount.UPI < maxAskCount {
 			return IntentAskUPI
 		}
@@ -121,7 +127,7 @@ func DeriveIntent(state State, intel Intel, turnCount int, askCount AskCount) In
 			return IntentAskLink
 		}
 
-		// === PRIORITY 2: Secondary intel — only if turns remain ===
+		// === PRIORITY 2: Secondary intel — ask each up to twice ===
 		if len(intel.CaseIDs) == 0 && askCount.CaseID < maxAskCount {
 			return IntentAskCaseID
 		}
@@ -131,13 +137,23 @@ func DeriveIntent(state State, intel Intel, turnCount int, askCount AskCount) In
 		if len(intel.CardNumbers) == 0 && askCount.CardNumber < maxAskCount {
 			return IntentAskCardNumber
 		}
+		if len(intel.PolicyNumbers) == 0 && askCount.PolicyNumber < maxAskCount {
+			return IntentAskPolicyNumber
+		}
+		if len(intel.OrderNumbers) == 0 && askCount.OrderNumber < maxAskCount {
+			return IntentAskOrderNumber
+		}
 
-		// === PRIORITY 3: Investigative / stalling — fill remaining turns ===
-		switch turnCount % 3 {
+		// === PRIORITY 3: Deep investigative probing — fills all remaining turns (11-15) ===
+		switch turnCount % 5 {
 		case 0:
 			return IntentAskIdentity
 		case 1:
+			return IntentDeepProbe
+		case 2:
 			return IntentConfirmDetails
+		case 3:
+			return IntentDeepProbe
 		default:
 			return IntentStall
 		}

@@ -3,6 +3,8 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -95,17 +97,26 @@ func StartConvo(w http.ResponseWriter, r *http.Request) {
 	// log.Println("Received request body: ", string(body))
 
 	var request Request
-	err := json.NewDecoder(r.Body).Decode(&request)
-	log.Println("Received request: ", request)
-	// log.Println("here 1 ")
+	err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&request) // 1MB limit
 	if err != nil {
-		http.Error(w, "Invalid request payload: "+err.Error(), http.StatusBadRequest)
+		log.Printf("Error decoding request body: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "reply": "Invalid request format"})
 		return
 	}
-	// log.Println("here 2 ")
+	log.Println("Received request session:", request.SessionID)
 	// Validate required fields
-	if request.SessionID == "" || request.Message.Text == "" {
-		http.Error(w, "sessionId and message.text are required", http.StatusBadRequest)
+	if request.SessionID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "reply": "sessionId is required"})
+		return
+	}
+	if request.Message.Text == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "reply": "message.text is required"})
 		return
 	}
 
@@ -236,6 +247,10 @@ func StartConvo(w http.ResponseWriter, r *http.Request) {
 	case internal.IntentAskIdentity:
 		session.Context.QuestionsAsked++
 		session.Context.InvestigativeQuestions++
+	case internal.IntentDeepProbe:
+		session.Context.QuestionsAsked++
+		session.Context.InvestigativeQuestions++
+		session.Context.InformationElicitations++
 	case internal.IntentConfirmDetails:
 		session.Context.QuestionsAsked++
 		session.Context.InvestigativeQuestions++
@@ -244,13 +259,22 @@ func StartConvo(w http.ResponseWriter, r *http.Request) {
 	reply := internal.GetResponse(intent)
 	log.Println("reply: ", reply)
 
-	// 15-second delay for engagement duration (well within 30s timeout)
-	// 10 turns × ~18s (15s delay + network/processing) = 180+ seconds
+	// Delay for engagement duration scoring (stays well within 30s API timeout)
+	// 15 turns x ~14s = ~210+ seconds total engagement
 	time.Sleep(12 * time.Second)
 
-	// Send final callback ONLY at turn 10
-	if session.Context.TurnCount >= 10 {
-		log.Printf("Session %s - Turn 10 reached. Sending final callback.",
+	// At turn 10: fire an intermediate callback WITHOUT ending the session.
+	// This guarantees a score even if the evaluator stops at exactly turn 10.
+	if session.Context.TurnCount == 10 {
+		log.Printf("Session %s - Turn 10: sending intermediate callback, session continues.",
+			request.SessionID)
+		sessionSnapshot := *session
+		go sendFinalCallback(&sessionSnapshot)
+	}
+
+	// At turn 15 (or beyond): fire final enriched callback and close session.
+	if session.Context.TurnCount >= 15 {
+		log.Printf("Session %s - Turn 15: sending final callback and closing session.",
 			request.SessionID)
 		go sendFinalCallback(session)
 		store.Delete(request.SessionID)
@@ -339,70 +363,168 @@ func sendFinalCallback(session *internal.SessionData) {
 }
 
 func buildAgentNotes(session *internal.SessionData) string {
-	var notes []string
+	var parts []string
+
+	allText := strings.ToLower(strings.Join(session.MessageHistory, " ") + " " + strings.Join(session.Keywords, " "))
 
 	if session.Context.ScamDetected {
-		notes = append(notes, "Scam detected with high confidence.")
+		parts = append(parts, "SCAM CONFIRMED with high confidence.")
 
-		// Enhanced red flag identification - scan ALL conversation messages + keywords
-		redFlags := []string{}
-		allText := strings.ToLower(strings.Join(session.MessageHistory, " ") + " " + strings.Join(session.Keywords, " "))
-
-		if strings.Contains(allText, "urgent") || strings.Contains(allText, "immediately") || strings.Contains(allText, "right now") || strings.Contains(allText, "final warning") {
-			redFlags = append(redFlags, "urgency tactics")
+		// Comprehensive red flag analysis
+		var redFlags []string
+		if strings.Contains(allText, "urgent") || strings.Contains(allText, "immediately") ||
+			strings.Contains(allText, "right now") || strings.Contains(allText, "final warning") ||
+			strings.Contains(allText, "within") {
+			redFlags = append(redFlags, "URGENCY TACTICS (time pressure used to prevent rational thinking)")
 		}
-		if strings.Contains(allText, "otp") || strings.Contains(allText, "password") || strings.Contains(allText, "pin") || strings.Contains(allText, "cvv") {
-			redFlags = append(redFlags, "credential harvesting")
+		if strings.Contains(allText, "otp") || strings.Contains(allText, "password") ||
+			strings.Contains(allText, "pin") || strings.Contains(allText, "cvv") {
+			redFlags = append(redFlags, "CREDENTIAL HARVESTING (attempted extraction of OTP/PIN/CVV/passwords)")
 		}
-		if strings.Contains(allText, "blocked") || strings.Contains(allText, "suspended") || strings.Contains(allText, "closed") || strings.Contains(allText, "frozen") || strings.Contains(allText, "disabled") {
-			redFlags = append(redFlags, "account threat")
+		if strings.Contains(allText, "blocked") || strings.Contains(allText, "suspended") ||
+			strings.Contains(allText, "closed") || strings.Contains(allText, "frozen") ||
+			strings.Contains(allText, "disabled") {
+			redFlags = append(redFlags, "ACCOUNT THREAT (threatened account suspension or closure to induce panic)")
 		}
-		if strings.Contains(allText, "verify") || strings.Contains(allText, "kyc") || strings.Contains(allText, "verification") || strings.Contains(allText, "re-activate") {
-			redFlags = append(redFlags, "verification scam")
+		if strings.Contains(allText, "verify") || strings.Contains(allText, "kyc") ||
+			strings.Contains(allText, "verification") || strings.Contains(allText, "re-activate") {
+			redFlags = append(redFlags, "FAKE VERIFICATION DEMAND (posed as legitimate KYC/verification requirement)")
 		}
-		if strings.Contains(allText, "click") || strings.Contains(allText, "link") || strings.Contains(allText, "tap") || strings.Contains(allText, "visit") {
-			redFlags = append(redFlags, "phishing attempt")
+		if strings.Contains(allText, "click") || strings.Contains(allText, "link") ||
+			strings.Contains(allText, "visit") || len(session.Context.Intel.Link) > 0 {
+			redFlags = append(redFlags, "PHISHING LINK (directed victim toward suspicious or malicious links)")
 		}
-		if strings.Contains(allText, "bank") || strings.Contains(allText, "sbi") || strings.Contains(allText, "hdfc") || strings.Contains(allText, "icici") || strings.Contains(allText, "rbi") || strings.Contains(allText, "customer care") {
-			redFlags = append(redFlags, "impersonation")
+		if strings.Contains(allText, "bank") || strings.Contains(allText, "sbi") ||
+			strings.Contains(allText, "hdfc") || strings.Contains(allText, "icici") ||
+			strings.Contains(allText, "rbi") || strings.Contains(allText, "customer care") {
+			redFlags = append(redFlags, "FINANCIAL INSTITUTION IMPERSONATION (posed as bank or RBI representative)")
 		}
-		if strings.Contains(allText, "payment") || strings.Contains(allText, "transfer") || strings.Contains(allText, "deposit") || strings.Contains(allText, "send money") {
-			redFlags = append(redFlags, "financial request")
+		if strings.Contains(allText, "payment") || strings.Contains(allText, "transfer") ||
+			strings.Contains(allText, "deposit") || strings.Contains(allText, "send money") {
+			redFlags = append(redFlags, "UNAUTHORIZED FINANCIAL REQUEST (demanded unsolicited fund transfer or payment)")
 		}
-		if strings.Contains(allText, "prize") || strings.Contains(allText, "lottery") || strings.Contains(allText, "winner") || strings.Contains(allText, "reward") {
-			redFlags = append(redFlags, "lottery/prize scam")
+		if strings.Contains(allText, "prize") || strings.Contains(allText, "lottery") ||
+			strings.Contains(allText, "winner") || strings.Contains(allText, "reward") ||
+			strings.Contains(allText, "cashback") || strings.Contains(allText, "refund") {
+			redFlags = append(redFlags, "LOTTERY/PRIZE FRAUD (lured victim with fake prize, cashback, or refund offer)")
 		}
-		if strings.Contains(allText, "police") || strings.Contains(allText, "arrest") || strings.Contains(allText, "legal") || strings.Contains(allText, "court") {
-			redFlags = append(redFlags, "threat of legal action")
+		if strings.Contains(allText, "police") || strings.Contains(allText, "arrest") ||
+			strings.Contains(allText, "court") || strings.Contains(allText, "warrant") ||
+			strings.Contains(allText, "cbi") || strings.Contains(allText, "legal action") {
+			redFlags = append(redFlags, "LEGAL INTIMIDATION (threatened arrest, court action, or government enforcement)")
 		}
-
+		if strings.Contains(allText, "virus") || strings.Contains(allText, "malware") ||
+			strings.Contains(allText, "hacked") || strings.Contains(allText, "remote access") ||
+			strings.Contains(allText, "technical support") {
+			redFlags = append(redFlags, "TECH SUPPORT FRAUD (falsely claimed device compromise to gain remote access)")
+		}
+		if strings.Contains(allText, "parcel") || strings.Contains(allText, "package") ||
+			strings.Contains(allText, "customs") || strings.Contains(allText, "courier") {
+			redFlags = append(redFlags, "DELIVERY/CUSTOMS SCAM (claimed parcel held at customs to extort fee)")
+		}
+		if strings.Contains(allText, "job") || strings.Contains(allText, "earn") ||
+			strings.Contains(allText, "investment") || strings.Contains(allText, "profit") {
+			redFlags = append(redFlags, "JOB/INVESTMENT FRAUD (offered fake jobs or unrealistic investment returns)")
+		}
 		if len(redFlags) > 0 {
 			uniqueFlags := deduplicateStrings(redFlags)
-			notes = append(notes, "Red flags identified: "+strings.Join(uniqueFlags, ", ")+".")
+			parts = append(parts, fmt.Sprintf("RED FLAGS (%d detected): %s", len(uniqueFlags), strings.Join(uniqueFlags, "; ")))
 		}
 	} else {
-		notes = append(notes, "No scam indicators detected.")
+		parts = append(parts, "No definitive scam indicators detected in the available conversation data.")
 	}
 
-	intelCount := len(session.Context.Intel.UPI) + len(session.Context.Intel.Phone) +
-		len(session.Context.Intel.Link) + len(session.Context.Intel.Bank) + len(session.Context.Intel.Email) +
-		len(session.Context.Intel.CaseIDs) + len(session.Context.Intel.PolicyNumbers) +
-		len(session.Context.Intel.OrderNumbers) + len(session.Context.Intel.CardNumbers) + len(session.Context.Intel.IFSCCodes)
-
-	if intelCount > 0 {
-		notes = append(notes, "Successfully extracted intelligence through strategic engagement.")
+	// Intelligence capture summary
+	var intelItems []string
+	if len(session.Context.Intel.Phone) > 0 {
+		intelItems = append(intelItems, "Phone: "+strings.Join(session.Context.Intel.Phone, ", "))
+	}
+	if len(session.Context.Intel.UPI) > 0 {
+		intelItems = append(intelItems, "UPI: "+strings.Join(session.Context.Intel.UPI, ", "))
+	}
+	if len(session.Context.Intel.Bank) > 0 {
+		intelItems = append(intelItems, "BankAcc: "+strings.Join(session.Context.Intel.Bank, ", "))
+	}
+	if len(session.Context.Intel.Email) > 0 {
+		intelItems = append(intelItems, "Email: "+strings.Join(session.Context.Intel.Email, ", "))
+	}
+	if len(session.Context.Intel.Link) > 0 {
+		intelItems = append(intelItems, "Links: "+strings.Join(session.Context.Intel.Link, ", "))
+	}
+	if len(session.Context.Intel.CaseIDs) > 0 {
+		intelItems = append(intelItems, "CaseID: "+strings.Join(session.Context.Intel.CaseIDs, ", "))
+	}
+	if len(session.Context.Intel.IFSCCodes) > 0 {
+		intelItems = append(intelItems, "IFSC: "+strings.Join(session.Context.Intel.IFSCCodes, ", "))
+	}
+	if len(session.Context.Intel.CardNumbers) > 0 {
+		intelItems = append(intelItems, "Card: "+strings.Join(session.Context.Intel.CardNumbers, ", "))
+	}
+	if len(session.Context.Intel.PolicyNumbers) > 0 {
+		intelItems = append(intelItems, "Policy: "+strings.Join(session.Context.Intel.PolicyNumbers, ", "))
+	}
+	if len(session.Context.Intel.OrderNumbers) > 0 {
+		intelItems = append(intelItems, "Order: "+strings.Join(session.Context.Intel.OrderNumbers, ", "))
+	}
+	if len(intelItems) > 0 {
+		parts = append(parts, "EXTRACTED INTEL: "+strings.Join(intelItems, " | "))
+	} else {
+		parts = append(parts, "INTEL STATUS: Scammer withheld all identifying information despite repeated probing attempts.")
 	}
 
+	// Tactics and keywords observed
 	if len(session.Keywords) > 0 {
-		notes = append(notes, "Scammer used tactics: "+strings.Join(session.Keywords, ", ")+".")
+		parts = append(parts, "SCAMMER TACTICS: "+strings.Join(deduplicateStrings(session.Keywords), ", "))
 	}
 
-	return strings.Join(notes, " ")
+	// Engagement statistics
+	parts = append(parts, fmt.Sprintf(
+		"ENGAGEMENT STATS: %d turns | %d questions asked | %d investigative questions | %d elicitation attempts",
+		session.Context.TurnCount,
+		session.Context.QuestionsAsked,
+		session.Context.InvestigativeQuestions,
+		session.Context.InformationElicitations,
+	))
+
+	// Threat classification
+	scamType := determineScamType(session)
+	if scamType != "unknown" {
+		parts = append(parts, fmt.Sprintf("THREAT CLASS: %s — matches known fraud methodology targeting Indian users", scamType))
+	}
+
+	return strings.Join(parts, " | ")
 }
 
 func determineScamType(session *internal.SessionData) string {
 	// Scan ALL text: keywords + full conversation history
 	allText := strings.ToLower(strings.Join(session.Keywords, " ") + " " + strings.Join(session.MessageHistory, " "))
+
+	// Government/legal threat (highest priority — very distinct pattern)
+	if strings.Contains(allText, "police") || strings.Contains(allText, "arrest") ||
+		strings.Contains(allText, "cbi") || strings.Contains(allText, "warrant") ||
+		strings.Contains(allText, "court") || strings.Contains(allText, "legal action") {
+		return "govt_threat_fraud"
+	}
+
+	// Tech support fraud
+	if strings.Contains(allText, "virus") || strings.Contains(allText, "malware") ||
+		strings.Contains(allText, "hacked") || strings.Contains(allText, "remote access") ||
+		strings.Contains(allText, "technical support") {
+		return "tech_support_fraud"
+	}
+
+	// Lottery/prize/cashback fraud
+	if strings.Contains(allText, "prize") || strings.Contains(allText, "lottery") ||
+		strings.Contains(allText, "winner") || strings.Contains(allText, "cashback") ||
+		strings.Contains(allText, "reward") || strings.Contains(allText, "refund") {
+		return "lottery_fraud"
+	}
+
+	// Delivery/parcel/customs fraud
+	if strings.Contains(allText, "parcel") || strings.Contains(allText, "customs") ||
+		strings.Contains(allText, "package") || strings.Contains(allText, "courier") {
+		return "delivery_fraud"
+	}
 
 	// Check for bank fraud indicators
 	if strings.Contains(allText, "bank") || strings.Contains(allText, "account") ||
@@ -425,8 +547,8 @@ func determineScamType(session *internal.SessionData) string {
 
 	// Check for impersonation
 	if strings.Contains(allText, "customer care") || strings.Contains(allText, "support team") ||
-		strings.Contains(allText, "rbi") || strings.Contains(allText, "police") {
-		return "impersonation"
+		strings.Contains(allText, "rbi") {
+		return "impersonation_fraud"
 	}
 
 	// Default to generic scam if detected

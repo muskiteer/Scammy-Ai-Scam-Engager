@@ -12,6 +12,9 @@ type ScamIndicators struct {
 	HasFinancial     bool
 	HasCredential    bool
 	HasImpersonation bool
+	HasLottery       bool
+	HasTechSupport   bool
+	HasGovtThreat    bool
 }
 
 // EXPANDED: Added more urgency patterns
@@ -22,8 +25,23 @@ var regexPaymentWords = regexp.MustCompile(`(?i)\b(pay|payment|transfer|send|dep
 var regexOTPWords = regexp.MustCompile(`(?i)\b(otp|one\s*time\s*password|pin|cvv|password)\b`)
 var regexImpersonationWords = regexp.MustCompile(`(?i)\b(bank|sbi|hdfc|icici|axis|rbi|customer\s*care|support\s*team)\b`)
 
-// NEW: Action words
+// Action words
 var regexActionWords = regexp.MustCompile(`(?i)\b(click|tap|call|dial|visit|open\s*link|contact|reply|download)\b`)
+
+// Lottery and prize scam patterns
+var regexLotteryWords = regexp.MustCompile(`(?i)\b(prize|lottery|winner|won|congratulations|reward|cashback|refund|bonus|gift)\b`)
+
+// Tech support scam patterns
+var regexTechSupportWords = regexp.MustCompile(`(?i)\b(virus|malware|hacked|compromised|remote\s*access|technical\s*support|install\s*software)\b`)
+
+// Government threat and legal intimidation patterns
+var regexGovtThreatWords = regexp.MustCompile(`(?i)\b(police|cbi|enforcement|income\s*tax|court|arrest|warrant|legal\s*action|government\s*official)\b`)
+
+// Delivery and parcel scam patterns
+var regexDeliveryWords = regexp.MustCompile(`(?i)\b(parcel|package|customs|courier|shipment|detained|delivery\s*fee)\b`)
+
+// Job and investment scam patterns
+var regexJobScamWords = regexp.MustCompile(`(?i)\b(job\s*offer|work\s*from\s*home|part[\s\-]time|earn\s*money|investment\s*return|profit\s*guarantee|easy\s*income)\b`)
 
 func ScamDetection(input string, indicators *ScamIndicators) {
 
@@ -57,9 +75,40 @@ func ScamDetection(input string, indicators *ScamIndicators) {
 		indicators.Words = append(indicators.Words, matches[0])
 		indicators.HasImpersonation = true
 	}
-	// NEW: Action word detection
+	// Action word detection
 	if matches := regexActionWords.FindStringSubmatch(input); len(matches) > 0 {
 		indicators.Score += 15
+		indicators.Words = append(indicators.Words, matches[0])
+	}
+	// Lottery/prize scam detection
+	if matches := regexLotteryWords.FindStringSubmatch(input); len(matches) > 0 {
+		indicators.Score += 30
+		indicators.Words = append(indicators.Words, matches[0])
+		indicators.HasLottery = true
+		indicators.HasFinancial = true
+	}
+	// Tech support scam detection
+	if matches := regexTechSupportWords.FindStringSubmatch(input); len(matches) > 0 {
+		indicators.Score += 25
+		indicators.Words = append(indicators.Words, matches[0])
+		indicators.HasTechSupport = true
+	}
+	// Government threat / legal intimidation detection
+	if matches := regexGovtThreatWords.FindStringSubmatch(input); len(matches) > 0 {
+		indicators.Score += 35
+		indicators.Words = append(indicators.Words, matches[0])
+		indicators.HasGovtThreat = true
+		indicators.HasThreat = true
+	}
+	// Delivery/parcel scam detection
+	if matches := regexDeliveryWords.FindStringSubmatch(input); len(matches) > 0 {
+		indicators.Score += 20
+		indicators.Words = append(indicators.Words, matches[0])
+		indicators.HasFinancial = true
+	}
+	// Job/investment scam detection
+	if matches := regexJobScamWords.FindStringSubmatch(input); len(matches) > 0 {
+		indicators.Score += 20
 		indicators.Words = append(indicators.Words, matches[0])
 	}
 }
@@ -94,8 +143,23 @@ func IsScam(indicators *ScamIndicators) bool {
 		return true
 	}
 
-	// CASE 6: Financial + credential even without urgency - NEW
+	// CASE 6: Financial + credential even without urgency
 	if indicators.HasFinancial && indicators.HasCredential && indicators.Score >= 40 {
+		return true
+	}
+
+	// CASE 7: Lottery/prize + financial (classic cashback/refund scam)
+	if indicators.HasLottery && indicators.HasFinancial {
+		return true
+	}
+
+	// CASE 8: Government threat with a significant score
+	if indicators.HasGovtThreat && indicators.Score >= 35 {
+		return true
+	}
+
+	// CASE 9: Tech support scam with urgency or high score
+	if indicators.HasTechSupport && (indicators.HasUrgency || indicators.Score >= 40) {
 		return true
 	}
 
