@@ -246,7 +246,7 @@ func StartConvo(w http.ResponseWriter, r *http.Request) {
 
 	// 15-second delay for engagement duration (well within 30s timeout)
 	// 10 turns × ~18s (15s delay + network/processing) = 180+ seconds
-	time.Sleep(15 * time.Second)
+	time.Sleep(12 * time.Second)
 
 	// Send final callback ONLY at turn 10
 	if session.Context.TurnCount >= 10 {
